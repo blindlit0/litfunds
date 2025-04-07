@@ -4,6 +4,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { signInWithEmailAndPassword, signOut } from 'firebase/auth';
 import { auth } from '@/lib/firebase';
 import { useState } from 'react';
+import Link from 'next/link';
 
 export default function Home() {
   const { user, loading, error } = useAuth();
@@ -31,20 +32,20 @@ export default function Home() {
   };
 
   if (loading) {
-  return (
-      <div className="flex items-center justify-center min-h-screen">
-        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-indigo-500"></div>
+    return (
+      <div className="flex items-center justify-center min-h-screen bg-background">
+        <div className="animate-pulse-slow rounded-full h-12 w-12 border-t-2 border-b-2 border-primary"></div>
       </div>
     );
   }
 
   if (error) {
     return (
-      <div className="flex items-center justify-center min-h-screen">
-        <div className="bg-gray-800 rounded-lg shadow-lg p-6 max-w-md mx-auto text-center">
-          <h2 className="text-2xl font-bold text-red-500 mb-4">Error</h2>
-          <p className="text-gray-300">{error.message}</p>
-          <p className="text-sm text-gray-400 mt-4">
+      <div className="flex items-center justify-center min-h-screen bg-background">
+        <div className="bg-surface rounded-lg shadow-glow p-6 max-w-md mx-auto text-center">
+          <h2 className="text-2xl font-bold text-accent mb-4">Error</h2>
+          <p className="text-text">{error.message}</p>
+          <p className="text-sm text-text-secondary mt-4">
             Please check your Firebase configuration and try again.
           </p>
         </div>
@@ -53,32 +54,32 @@ export default function Home() {
   }
 
   return (
-    <main className="min-h-screen bg-gray-900">
+    <main className="min-h-screen bg-background">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
         {user ? (
-          <div className="bg-gray-800 rounded-lg shadow-lg p-6 max-w-md mx-auto">
+          <div className="bg-surface rounded-lg shadow-glow p-6 max-w-md mx-auto">
             <div className="text-center">
-              <h1 className="text-2xl font-bold mb-4 text-indigo-400">Welcome back, {user.email}</h1>
-              <p className="text-gray-400 mb-6">Ready to track your expenses?</p>
+              <h1 className="text-2xl font-bold mb-4 text-primary">Welcome back, {user.email}</h1>
+              <p className="text-text-secondary mb-6">Ready to track your expenses?</p>
               <button
                 onClick={handleLogout}
-                className="bg-red-600 hover:bg-red-700 text-white font-semibold py-2 px-4 rounded-md transition-colors"
+                className="bg-accent hover:bg-accent/90 text-white font-semibold py-2 px-4 rounded-md transition-all duration-300 shadow-glow"
               >
                 Sign Out
               </button>
             </div>
           </div>
         ) : (
-          <div className="bg-gray-800 rounded-lg shadow-lg p-6 max-w-md mx-auto">
-            <h1 className="text-3xl font-bold text-center mb-8 text-indigo-400">Expense Tracker</h1>
+          <div className="bg-surface rounded-lg shadow-glow p-6 max-w-md mx-auto">
+            <h1 className="text-3xl font-bold text-center mb-8 text-primary">Expense Tracker</h1>
             {authError && (
-              <div className="mb-4 p-4 bg-red-900 text-red-100 rounded-md">
+              <div className="mb-4 p-4 bg-accent/10 border border-accent text-accent rounded-md">
                 {authError}
               </div>
             )}
             <form onSubmit={handleLogin} className="space-y-6">
               <div>
-                <label htmlFor="email" className="block text-sm font-medium text-gray-300">
+                <label htmlFor="email" className="block text-sm font-medium text-text-secondary">
                   Email
                 </label>
                 <input
@@ -86,12 +87,12 @@ export default function Home() {
                   id="email"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  className="w-full px-3 py-2 bg-surface-light border border-primary/30 rounded-md text-text focus:outline-none focus:ring-2 focus:ring-primary transition-all duration-300"
                   required
                 />
               </div>
               <div>
-                <label htmlFor="password" className="block text-sm font-medium text-gray-300">
+                <label htmlFor="password" className="block text-sm font-medium text-text-secondary">
                   Password
                 </label>
                 <input
@@ -99,28 +100,28 @@ export default function Home() {
                   id="password"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  className="w-full px-3 py-2 bg-surface-light border border-primary/30 rounded-md text-text focus:outline-none focus:ring-2 focus:ring-primary transition-all duration-300"
                   required
                 />
               </div>
               <button
                 type="submit"
-                className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-2 px-4 rounded-md transition-colors"
+                className="w-full bg-primary hover:bg-primary-dark text-background font-semibold py-2 px-4 rounded-md transition-all duration-300 shadow-glow"
               >
                 Sign In
               </button>
             </form>
             <div className="mt-6 text-center">
-              <p className="text-sm text-gray-400">
+              <p className="text-sm text-text-secondary">
                 Don't have an account?{' '}
-                <a href="#" className="text-indigo-400 hover:text-indigo-300">
+                <Link href="/signup" className="text-secondary hover:text-secondary-dark transition-colors duration-300">
                   Sign up
-                </a>
+                </Link>
               </p>
             </div>
           </div>
         )}
-    </div>
+      </div>
     </main>
   );
 }
