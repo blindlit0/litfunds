@@ -26,6 +26,7 @@ yarn-error.log*
 
 # local env files
 .env*.local
+NEXT_PUBLIC_FIREBASE_API_KEY=AIzaSyCJfseC2Ik7Ffdz22zVH_4Tkjc9UQSu3lM
 
 # vercel
 .vercel
