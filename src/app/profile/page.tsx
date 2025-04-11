@@ -1,17 +1,23 @@
 'use client';
 
 import { useAuth } from '@/contexts/AuthContext';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { updateProfile } from 'firebase/auth';
 import { auth } from '@/lib/firebase';
 import Link from 'next/link';
 
 export default function ProfilePage() {
   const { user } = useAuth();
-  const [displayName, setDisplayName] = useState(user?.displayName || '');
+  const [displayName, setDisplayName] = useState('');
   const [isEditing, setIsEditing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (user?.displayName) {
+      setDisplayName(user.displayName);
+    }
+  }, [user]);
 
   const handleUpdateProfile = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -71,7 +77,7 @@ export default function ProfilePage() {
                 </div>
               </div>
 
-              <form onSubmit={handleUpdateProfile} className="space-y-4">
+              <div className="space-y-4">
                 <div>
                   <label htmlFor="displayName" className="block text-sm font-medium text-text-secondary">
                     Display Name
@@ -98,7 +104,8 @@ export default function ProfilePage() {
                   ) : (
                     <>
                       <button
-                        type="submit"
+                        type="button"
+                        onClick={handleUpdateProfile}
                         className="bg-secondary hover:bg-secondary-dark text-background font-semibold py-2 px-4 rounded-md transition-all duration-300 shadow-glow-green"
                       >
                         Save Changes
@@ -116,7 +123,7 @@ export default function ProfilePage() {
                     </>
                   )}
                 </div>
-              </form>
+              </div>
             </div>
           </div>
         </div>

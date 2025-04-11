@@ -32,7 +32,6 @@ export default function HomePage() {
               >
                 Profile
               </Link>
-              <span className="text-text-secondary">{user?.email}</span>
               <button
                 onClick={handleSignOut}
                 className="bg-accent hover:bg-accent/90 text-white px-4 py-2 rounded-md transition-all duration-300 shadow-glow"
