@@ -4,9 +4,53 @@ import { useAuth } from '@/contexts/AuthContext';
 import { signOut } from 'firebase/auth';
 import { auth } from '@/lib/firebase';
 import Link from 'next/link';
+import { useState, useEffect } from 'react';
+import { collection, query, where, orderBy, getDocs } from 'firebase/firestore';
+import { db } from '@/lib/firebase';
+
+interface Transaction {
+  id: string;
+  amount: number;
+  description: string;
+  category: string;
+  type: 'income' | 'expense';
+  date: Date;
+}
 
 export default function HomePage() {
   const { user } = useAuth();
+  const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchTransactions = async () => {
+      if (!user) return;
+
+      try {
+        const transactionsRef = collection(db, 'transactions');
+        const q = query(
+          transactionsRef,
+          where('userId', '==', user.uid),
+          orderBy('createdAt', 'desc')
+        );
+
+        const querySnapshot = await getDocs(q);
+        const fetchedTransactions = querySnapshot.docs.map(doc => ({
+          id: doc.id,
+          ...doc.data(),
+          date: doc.data().date.toDate(),
+        })) as Transaction[];
+
+        setTransactions(fetchedTransactions);
+      } catch (error) {
+        console.error('Error fetching transactions:', error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchTransactions();
+  }, [user]);
 
   const handleSignOut = async () => {
     try {
@@ -16,6 +60,21 @@ export default function HomePage() {
     }
   };
 
+  const formatCurrency = (amount: number) => {
+    return new Intl.NumberFormat('en-GH', {
+      style: 'currency',
+      currency: 'GHS',
+    }).format(Math.abs(amount));
+  };
+
+  const formatDate = (date: Date) => {
+    return new Intl.DateTimeFormat('en-GH', {
+      day: 'numeric',
+      month: 'short',
+      year: 'numeric',
+    }).format(date);
+  };
+
   return (
     <div className="min-h-screen bg-background">
       {/* Navigation */}
@@ -23,7 +82,7 @@ export default function HomePage() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-16">
             <div className="flex items-center">
-              <h1 className="text-xl font-bold text-primary">LitFunds</h1>
+              <h1 className="text-xl font-bold text-primary">Expense Tracker</h1>
             </div>
             <div className="flex items-center space-x-4">
               <Link
@@ -52,15 +111,25 @@ export default function HomePage() {
             <div className="space-y-4">
               <div className="flex justify-between items-center">
                 <span className="text-text-secondary">Total Income</span>
-                <span className="text-secondary font-semibold">₵0.00</span>
+                <span className="text-secondary font-semibold">
+                  {formatCurrency(transactions
+                    .filter(t => t.type === 'income')
+                    .reduce((sum, t) => sum + t.amount, 0))}
+                </span>
               </div>
               <div className="flex justify-between items-center">
                 <span className="text-text-secondary">Total Expenses</span>
-                <span className="text-accent font-semibold">₵0.00</span>
+                <span className="text-accent font-semibold">
+                  {formatCurrency(transactions
+                    .filter(t => t.type === 'expense')
+                    .reduce((sum, t) => sum + Math.abs(t.amount), 0))}
+                </span>
               </div>
               <div className="flex justify-between items-center border-t border-primary/20 pt-4">
                 <span className="text-text-secondary">Balance</span>
-                <span className="text-primary font-semibold">₵0.00</span>
+                <span className="text-primary font-semibold">
+                  {formatCurrency(transactions.reduce((sum, t) => sum + t.amount, 0))}
+                </span>
               </div>
             </div>
           </div>
@@ -77,7 +146,33 @@ export default function HomePage() {
               </Link>
             </div>
             <div className="space-y-4">
-              <p className="text-text-secondary text-center">No transactions yet</p>
+              {loading ? (
+                <div className="text-center text-text-secondary">Loading transactions...</div>
+              ) : transactions.length === 0 ? (
+                <p className="text-text-secondary text-center">No transactions yet</p>
+              ) : (
+                transactions.map(transaction => (
+                  <div
+                    key={transaction.id}
+                    className="flex justify-between items-center p-4 bg-surface-light rounded-lg"
+                  >
+                    <div>
+                      <h3 className="font-medium text-text">{transaction.description}</h3>
+                      <p className="text-sm text-text-secondary">
+                        {formatDate(transaction.date)} • {transaction.category}
+                      </p>
+                    </div>
+                    <span
+                      className={`font-semibold ${
+                        transaction.type === 'income' ? 'text-secondary' : 'text-accent'
+                      }`}
+                    >
+                      {transaction.type === 'income' ? '+' : '-'}
+                      {formatCurrency(transaction.amount)}
+                    </span>
+                  </div>
+                ))
+              )}
             </div>
           </div>
 
@@ -85,43 +180,53 @@ export default function HomePage() {
           <div className="bg-surface rounded-lg shadow-glow p-6">
             <h2 className="text-xl font-semibold text-primary mb-4">Categories</h2>
             <div className="space-y-2">
-              <div className="flex justify-between items-center">
-                <span className="text-text-secondary">Food & Dining</span>
-                <span className="text-accent">₵0.00</span>
-              </div>
-              <div className="flex justify-between items-center">
-                <span className="text-text-secondary">Transportation</span>
-                <span className="text-accent">₵0.00</span>
-              </div>
-              <div className="flex justify-between items-center">
-                <span className="text-text-secondary">Entertainment</span>
-                <span className="text-accent">₵0.00</span>
-              </div>
+              {['Food & Dining', 'Transportation', 'Entertainment'].map(category => (
+                <div key={category} className="flex justify-between items-center">
+                  <span className="text-text-secondary">{category}</span>
+                  <span className="text-accent">
+                    {formatCurrency(
+                      transactions
+                        .filter(t => t.category.toLowerCase() === category.toLowerCase().replace(' & ', ''))
+                        .reduce((sum, t) => sum + Math.abs(t.amount), 0)
+                    )}
+                  </span>
+                </div>
+              ))}
             </div>
           </div>
 
           {/* Budget Overview */}
-          <div className="bg-surface rounded-lg shadow-glow p-6 md:col-span-2">
+          <div className="bg-surface rounded-lg shadow-glow p-6">
             <h2 className="text-xl font-semibold text-primary mb-4">Budget Overview</h2>
             <div className="space-y-4">
-              <div>
-                <div className="flex justify-between mb-1">
-                  <span className="text-text-secondary">Food & Dining</span>
-                  <span className="text-text-secondary">₵0 / ₵500</span>
-                </div>
-                <div className="w-full bg-surface-light rounded-full h-2">
-                  <div className="bg-primary h-2 rounded-full transition-all duration-300" style={{ width: '0%' }}></div>
-                </div>
-              </div>
-              <div>
-                <div className="flex justify-between mb-1">
-                  <span className="text-text-secondary">Transportation</span>
-                  <span className="text-text-secondary">₵0 / ₵300</span>
-                </div>
-                <div className="w-full bg-surface-light rounded-full h-2">
-                  <div className="bg-secondary h-2 rounded-full transition-all duration-300" style={{ width: '0%' }}></div>
-                </div>
-              </div>
+              {[
+                { category: 'Food & Dining', budget: 500 },
+                { category: 'Transportation', budget: 300 },
+              ].map(({ category, budget }) => {
+                const spent = transactions
+                  .filter(t => t.category.toLowerCase() === category.toLowerCase().replace(' & ', ''))
+                  .reduce((sum, t) => sum + Math.abs(t.amount), 0);
+                const percentage = (spent / budget) * 100;
+
+                return (
+                  <div key={category}>
+                    <div className="flex justify-between mb-1">
+                      <span className="text-text-secondary">{category}</span>
+                      <span className="text-text-secondary">
+                        {formatCurrency(spent)} / {formatCurrency(budget)}
+                      </span>
+                    </div>
+                    <div className="w-full bg-surface-light rounded-full h-2">
+                      <div
+                        className={`h-2 rounded-full transition-all duration-300 ${
+                          percentage > 100 ? 'bg-accent' : 'bg-primary'
+                        }`}
+                        style={{ width: `${Math.min(percentage, 100)}%` }}
+                      ></div>
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           </div>
         </div>
