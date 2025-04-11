@@ -26,6 +26,12 @@ export default function HomePage() {
               <h1 className="text-xl font-bold text-primary">LitFunds</h1>
             </div>
             <div className="flex items-center space-x-4">
+              <Link
+                href="/profile"
+                className="text-text-secondary hover:text-primary transition-colors duration-300"
+              >
+                Profile
+              </Link>
               <span className="text-text-secondary">{user?.email}</span>
               <button
                 onClick={handleSignOut}

@@ -4,9 +4,11 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { addDoc, collection } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
+import { useAuth } from '@/contexts/AuthContext';
 
 export default function NewTransactionPage() {
   const router = useRouter();
+  const { user } = useAuth();
   const [formData, setFormData] = useState({
     amount: '',
     description: '',
@@ -28,21 +30,26 @@ export default function NewTransactionPage() {
     setIsSubmitting(true);
 
     try {
+      if (!user) {
+        throw new Error('You must be logged in to add a transaction');
+      }
+
       const amount = parseFloat(formData.amount);
       if (isNaN(amount) || amount <= 0) {
         throw new Error('Please enter a valid amount');
       }
 
-      await addDoc(collection(db, 'transactions'), {
+      const transactionData = {
         ...formData,
         amount: formData.type === 'expense' ? -amount : amount,
+        userId: user.uid,
         createdAt: new Date(),
-      });
+      };
 
+      await addDoc(collection(db, 'transactions'), transactionData);
       router.push('/home');
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'An error occurred');
-    } finally {
+      setError(err instanceof Error ? err.message : 'An error occurred while saving the transaction');
       setIsSubmitting(false);
     }
   };
