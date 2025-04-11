@@ -5,8 +5,10 @@ import { signInWithEmailAndPassword, signOut } from 'firebase/auth';
 import { auth } from '@/lib/firebase';
 import { useState } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 
 export default function Home() {
+  const router = useRouter();
   const { user, loading, error } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -17,6 +19,7 @@ export default function Home() {
     setAuthError(null);
     try {
       await signInWithEmailAndPassword(auth, email, password);
+      router.push('/home');
     } catch (error) {
       setAuthError('Invalid email or password');
       console.error('Error signing in:', error);
@@ -71,7 +74,7 @@ export default function Home() {
           </div>
         ) : (
           <div className="bg-surface rounded-lg shadow-glow p-6 max-w-md mx-auto">
-            <h1 className="text-3xl font-bold text-center mb-8 text-primary">Expense Tracker</h1>
+            <h1 className="text-3xl font-bold text-center mb-8 text-primary">LitFunds</h1>
             {authError && (
               <div className="mb-4 p-4 bg-accent/10 border border-accent text-accent rounded-md">
                 {authError}
