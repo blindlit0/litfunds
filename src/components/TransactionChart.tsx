@@ -2,15 +2,27 @@
 
 import { useEffect, useRef } from 'react';
 import { Chart, ChartConfiguration } from 'chart.js/auto';
-
-interface ChartData {
-  category: string;
-  amount: number;
-}
+import { Transaction } from '../types/transaction';
 
 interface TransactionChartProps {
-  data: ChartData[];
+  data: Transaction[];
 }
+
+const getCategoryTotals = (transactions: Transaction[]) => {
+  const totals: Record<string, number> = {};
+  
+  // Only process expense transactions
+  transactions
+    .filter(t => t.type === 'expense')
+    .forEach(t => {
+      const category = t.category.toLowerCase();
+      totals[category] = (totals[category] || 0) + Math.abs(t.amount);
+    });
+
+  return Object.entries(totals)
+    .map(([name, value]) => ({ name, value }))
+    .sort((a, b) => b.value - a.value);
+};
 
 export default function TransactionChart({ data }: TransactionChartProps) {
   const chartRef = useRef<HTMLCanvasElement>(null);
@@ -27,13 +39,15 @@ export default function TransactionChart({ data }: TransactionChartProps) {
     const ctx = chartRef.current.getContext('2d');
     if (!ctx) return;
 
+    const categoryData = getCategoryTotals(data);
+
     const config: ChartConfiguration = {
       type: 'doughnut',
       data: {
-        labels: data.map(item => item.category),
+        labels: categoryData.map(item => item.name),
         datasets: [
           {
-            data: data.map(item => item.amount),
+            data: categoryData.map(item => item.value),
             backgroundColor: [
               'rgba(99, 102, 241, 0.8)', // indigo
               'rgba(236, 72, 153, 0.8)', // pink

@@ -5,22 +5,19 @@ import { signOut } from 'firebase/auth';
 import { auth, db } from '@/lib/firebase';
 import Link from 'next/link';
 import { useState, useEffect } from 'react';
-import { collection, query, where, orderBy, getDocs } from 'firebase/firestore';
+import { collection, query, where, orderBy, getDocs, doc, deleteDoc } from 'firebase/firestore';
 import TransactionChart from '@/components/TransactionChart';
-
-interface Transaction {
-  id: string;
-  amount: number;
-  description: string;
-  category: string;
-  type: 'income' | 'expense';
-  date: Date;
-}
+import { format } from 'date-fns';
+import { useRouter } from 'next/navigation';
+import { getAuth, onAuthStateChanged } from 'firebase/auth';
+import { Transaction } from '@/types/transaction';
 
 export default function HomePage() {
   const { user } = useAuth();
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [loading, setLoading] = useState(true);
+  const [activeSection, setActiveSection] = useState<'overview' | 'transactions' | 'analytics'>('overview');
+  const router = useRouter();
 
   useEffect(() => {
     const fetchTransactions = async () => {
@@ -34,17 +31,14 @@ export default function HomePage() {
         );
 
         const querySnapshot = await getDocs(q);
-        const fetched = querySnapshot.docs.map(doc => {
-          const data = doc.data();
-          return {
-            id: doc.id,
-            ...data,
-            date: data.date.toDate(),
-            category: data.category.toLowerCase(),
-          };
-        }) as Transaction[];
+        const transactionsData = querySnapshot.docs.map(doc => ({
+          id: doc.id,
+          ...doc.data(),
+          date: doc.data().date.toDate(),
+          category: doc.data().category.toLowerCase(),
+        })) as Transaction[];
 
-        setTransactions(fetched);
+        setTransactions(transactionsData);
       } catch (error) {
         console.error('Error fetching transactions:', error);
       } finally {
@@ -66,41 +60,114 @@ export default function HomePage() {
   const formatCurrency = (amount: number) =>
     new Intl.NumberFormat('en-GH', { style: 'currency', currency: 'GHS' }).format(Math.abs(amount));
 
-  const formatDate = (date: Date) =>
-    new Intl.DateTimeFormat('en-GH', { day: 'numeric', month: 'short', year: 'numeric' }).format(date);
-
-  const getCategoryTotal = (categoryName: string) => {
-    const key = categoryName.toLowerCase().replace(/[^a-z]/g, '');
-    return transactions
-      .filter(t => t.category.replace(/[^a-z]/g, '') === key)
-      .reduce((sum, t) => sum + Math.abs(t.amount), 0);
-  };
-
-  const groupedChartData = transactions.reduce((acc, t) => {
-    const category = t.category;
-    acc[category] = (acc[category] || 0) + Math.abs(t.amount);
-    return acc;
-  }, {} as Record<string, number>);
-
-  const chartData = Object.entries(groupedChartData).map(([category, amount]) => ({ category, amount }));
-
   const totalIncome = transactions.filter(t => t.type === 'income').reduce((sum, t) => sum + t.amount, 0);
   const totalExpenses = transactions.filter(t => t.type === 'expense').reduce((sum, t) => sum + Math.abs(t.amount), 0);
+  const balance = totalIncome - totalExpenses;
+
+  const getBalanceStatus = (balance: number, totalExpenses: number) => {
+    const expenseRatio = totalExpenses > 0 ? Math.abs(balance) / totalExpenses : 0;
+    
+    if (balance < 0) {
+      if (expenseRatio > 0.5) {
+        return {
+          status: 'critical',
+          message: 'Your expenses are significantly higher than your income. Consider reviewing your spending habits.',
+          color: 'text-accent',
+          bgColor: 'bg-accent/10'
+        };
+      } else {
+        return {
+          status: 'warning',
+          message: 'Your expenses exceed your income. Try to reduce unnecessary spending.',
+          color: 'text-accent',
+          bgColor: 'bg-accent/10'
+        };
+      }
+    } else {
+      if (balance > totalExpenses * 3) {
+        return {
+          status: 'excellent',
+          message: 'Great job! You have a healthy financial buffer. Consider saving or investing the excess.',
+          color: 'text-secondary',
+          bgColor: 'bg-secondary/10'
+        };
+      } else if (balance > totalExpenses) {
+        return {
+          status: 'good',
+          message: 'Your finances are in good shape. Keep up the good work!',
+          color: 'text-secondary',
+          bgColor: 'bg-secondary/10'
+        };
+      } else {
+        return {
+          status: 'normal',
+          message: 'Your balance is positive, but consider building a larger financial buffer.',
+          color: 'text-secondary',
+          bgColor: 'bg-secondary/10'
+        };
+      }
+    }
+  };
+
+  const TransactionItem = ({ transaction }: { transaction: Transaction }) => {
+    const handleDelete = async () => {
+      if (!user) return;
+
+      try {
+        const transactionRef = doc(db, 'transactions', transaction.id);
+        await deleteDoc(transactionRef);
+        router.refresh(); // Refresh the page to update the transaction list
+      } catch (error) {
+        console.error('Error deleting transaction:', error);
+      }
+    };
+
+    return (
+      <div className="flex items-center justify-between p-4 bg-white/5 rounded-lg hover:bg-white/10 transition-colors duration-300">
+        <div className="flex-1">
+          <div className="flex items-center space-x-2">
+            <span className={`text-sm font-medium ${transaction.type === 'income' ? 'text-secondary' : 'text-accent'}`}>
+              {transaction.type === 'income' ? '+' : '-'}₵{Math.abs(transaction.amount).toFixed(2)}
+            </span>
+            <span className="text-text-secondary text-sm">
+              {format(transaction.date, 'MMM d, yyyy')}
+            </span>
+          </div>
+          <p className="text-text-primary mt-1">{transaction.description}</p>
+          <p className="text-text-secondary text-sm capitalize">{transaction.category}</p>
+        </div>
+        <div className="flex space-x-2">
+          <Link
+            href={`/transactions/${transaction.id}`}
+            className="p-2 text-primary hover:text-primary/80 transition-colors duration-300"
+            title="Edit transaction"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+              <path d="M13.586 3.586a2 2 0 112.828 2.828l-.793.793-2.828-2.828.793-.793zM11.379 5.793L3 14.172V17h2.828l8.38-8.379-2.83-2.828z" />
+            </svg>
+          </Link>
+          <button
+            onClick={handleDelete}
+            className="p-2 text-accent hover:text-accent/80 transition-colors duration-300"
+            title="Delete transaction"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+              <path fillRule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v6a1 1 0 102 0V8a1 1 0 00-1-1z" clipRule="evenodd" />
+            </svg>
+          </button>
+        </div>
+      </div>
+    );
+  };
 
   return (
-    <div className="min-h-screen bg-background">
-      <nav className="bg-surface border-b border-primary/20">
+    <div className="min-h-screen bg-gradient-to-br from-background to-background/80">
+      <nav className="bg-white/5 border-b border-primary/20">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between h-16 items-center">
             <h1 className="text-xl font-bold text-primary">LitFunds</h1>
             <div className="flex items-center space-x-4">
               <span className="text-text-secondary">Welcome, {user?.displayName || 'User'}</span>
-              <Link
-                href="/analytics"
-                className="text-text-secondary hover:text-primary transition-colors duration-300"
-              >
-                Analytics
-              </Link>
               <Link
                 href="/profile"
                 className="text-text-secondary hover:text-primary transition-colors duration-300"
@@ -119,32 +186,135 @@ export default function HomePage() {
       </nav>
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        {/* Navigation Buttons */}
+        <div className="flex space-x-4 mb-8">
+          <button
+            onClick={() => setActiveSection('overview')}
+            className={`px-6 py-3 rounded-lg transition-colors duration-300 ${
+              activeSection === 'overview'
+                ? 'bg-secondary text-white shadow-glow-green'
+                : 'bg-white/5 text-text-secondary hover:bg-white/10'
+            }`}
+          >
+            Overview
+          </button>
+          <button
+            onClick={() => setActiveSection('transactions')}
+            className={`px-6 py-3 rounded-lg transition-colors duration-300 ${
+              activeSection === 'transactions'
+                ? 'bg-secondary text-white shadow-glow-green'
+                : 'bg-white/5 text-text-secondary hover:bg-white/10'
+            }`}
+          >
+            Transactions
+          </button>
+          <button
+            onClick={() => setActiveSection('analytics')}
+            className={`px-6 py-3 rounded-lg transition-colors duration-300 ${
+              activeSection === 'analytics'
+                ? 'bg-secondary text-white shadow-glow-green'
+                : 'bg-white/5 text-text-secondary hover:bg-white/10'
+            }`}
+          >
+            Analytics
+          </button>
+        </div>
 
-          <div className="bg-surface rounded-lg shadow-glow p-6">
-            <h2 className="text-xl font-semibold text-primary mb-4">Monthly Summary</h2>
-            <div className="space-y-4">
-              <div className="flex justify-between">
-                <span className="text-text-secondary">Total Income</span>
-                <span className="text-secondary font-semibold">{formatCurrency(totalIncome)}</span>
+        {/* Overview Section */}
+        {activeSection === 'overview' && (
+          <div className="flex flex-col lg:flex-row gap-6">
+            {/* Left Column - Summary and Recent Transactions */}
+            <div className="flex-1 space-y-6">
+              <div className="bg-white/5 rounded-lg shadow-glow p-6">
+                <h2 className="text-xl font-semibold text-primary mb-4">Monthly Summary</h2>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="bg-secondary/10 p-4 rounded-lg">
+                    <p className="text-text-secondary">Total Income</p>
+                    <p className="text-2xl font-bold text-secondary">{formatCurrency(totalIncome)}</p>
+                  </div>
+                  <div className="bg-accent/10 p-4 rounded-lg">
+                    <p className="text-text-secondary">Total Expenses</p>
+                    <p className="text-2xl font-bold text-accent">{formatCurrency(totalExpenses)}</p>
+                  </div>
+                  <div className="col-span-2 bg-white/5 p-4 rounded-lg">
+                    <p className="text-text-secondary">Balance</p>
+                    <p className={`text-2xl font-bold ${balance >= 0 ? 'text-secondary' : 'text-accent'}`}>
+                      {balance >= 0 ? '+' : ''}{formatCurrency(balance)}
+                    </p>
+                  </div>
+                </div>
               </div>
-              <div className="flex justify-between">
-                <span className="text-text-secondary">Total Expenses</span>
-                <span className="text-accent font-semibold">{formatCurrency(totalExpenses)}</span>
+
+              {/* Balance Status Card */}
+              <div className={`rounded-lg shadow-glow p-6 ${getBalanceStatus(balance, totalExpenses).bgColor}`}>
+                <h2 className="text-xl font-semibold text-primary mb-4">Financial Status</h2>
+                <div className="space-y-4">
+                  <div className="flex items-center space-x-2">
+                    <span className={`text-lg font-medium ${getBalanceStatus(balance, totalExpenses).color}`}>
+                      {getBalanceStatus(balance, totalExpenses).status.charAt(0).toUpperCase() + 
+                       getBalanceStatus(balance, totalExpenses).status.slice(1)}
+                    </span>
+                  </div>
+                  <p className="text-text-primary">
+                    {getBalanceStatus(balance, totalExpenses).message}
+                  </p>
+                  {balance < 0 && (
+                    <div className="mt-4">
+                      <Link
+                        href="/transactions/new"
+                        className="inline-block bg-secondary hover:bg-secondary-dark text-white px-4 py-2 rounded-md transition shadow-glow-green"
+                      >
+                        Add Income
+                      </Link>
+                    </div>
+                  )}
+                </div>
               </div>
-              <div className="flex justify-between border-t border-primary/20 pt-4">
-                <span className="text-text-secondary">Balance</span>
-                <span className="text-primary font-semibold">{formatCurrency(totalIncome - totalExpenses)}</span>
+
+              <div className="bg-white/5 rounded-lg shadow-glow p-6">
+                <h2 className="text-xl font-semibold text-primary mb-4">Recent Transactions</h2>
+                <div className="space-y-4">
+                  {loading ? (
+                    <p className="text-center text-text-secondary">Loading...</p>
+                  ) : transactions.length === 0 ? (
+                    <p className="text-center text-text-secondary">No transactions yet</p>
+                  ) : (
+                    transactions.slice(0, 3).map(t => (
+                      <TransactionItem key={t.id} transaction={t} />
+                    ))
+                  )}
+                </div>
+                <div className="mt-4">
+                  <Link
+                    href="/transactions/new"
+                    className="block w-full text-center bg-secondary hover:bg-secondary-dark text-white px-4 py-2 rounded-md transition shadow-glow-green"
+                  >
+                    Add Transaction
+                  </Link>
+                </div>
+              </div>
+            </div>
+
+            {/* Right Column - Charts */}
+            <div className="flex-1">
+              <div className="bg-white/5 rounded-lg shadow-glow p-6 h-full">
+                <h2 className="text-xl font-semibold text-primary mb-4">Spending by Category</h2>
+                <div className="h-[500px]">
+                  <TransactionChart data={transactions} />
+                </div>
               </div>
             </div>
           </div>
+        )}
 
-          <div className="bg-surface rounded-lg shadow-glow p-6 md:col-span-2">
-            <div className="flex justify-between mb-6">
-              <h2 className="text-xl font-semibold text-primary">Recent Transactions</h2>
+        {/* Transactions Section */}
+        {activeSection === 'transactions' && (
+          <div className="bg-white/5 rounded-lg shadow-glow p-6">
+            <div className="flex justify-between items-center mb-6">
+              <h2 className="text-xl font-semibold text-primary">All Transactions</h2>
               <Link
                 href="/transactions/new"
-                className="bg-secondary hover:bg-secondary-dark text-background px-4 py-2 rounded-md transition shadow-glow-green"
+                className="bg-secondary hover:bg-secondary-dark text-white px-4 py-2 rounded-md transition shadow-glow-green"
               >
                 Add Transaction
               </Link>
@@ -156,48 +326,45 @@ export default function HomePage() {
                 <p className="text-center text-text-secondary">No transactions yet</p>
               ) : (
                 transactions.map(t => (
-                  <div key={t.id} className="flex justify-between items-center p-4 bg-surface-light rounded-lg">
-                    <div>
-                      <h3 className="font-medium text-text">{t.description}</h3>
-                      <p className="text-sm text-text-secondary">{formatDate(t.date)} • {t.category}</p>
-                    </div>
-                    <span className={`font-semibold ${t.type === 'income' ? 'text-secondary' : 'text-accent'}`}>
-                      {t.type === 'income' ? '+' : '-'}{formatCurrency(t.amount)}
-                    </span>
-                  </div>
+                  <TransactionItem key={t.id} transaction={t} />
                 ))
               )}
             </div>
           </div>
+        )}
 
-          <div className="bg-surface rounded-lg shadow-glow p-6">
-            <h2 className="text-xl font-semibold text-primary mb-4">Spending by Category</h2>
-            <TransactionChart data={chartData} />
+        {/* Analytics Section */}
+        {activeSection === 'analytics' && (
+          <div className="flex flex-col lg:flex-row gap-6">
+            <div className="flex-1 bg-white/5 rounded-lg shadow-glow p-6">
+              <h2 className="text-xl font-semibold text-primary mb-4">Spending Trends</h2>
+              <div className="h-[500px]">
+                <TransactionChart data={transactions} />
+              </div>
+            </div>
+
+            <div className="flex-1 bg-white/5 rounded-lg shadow-glow p-6">
+              <h2 className="text-xl font-semibold text-primary mb-4">Category Breakdown</h2>
+              <div className="space-y-4">
+                {Object.entries(
+                  transactions.reduce((acc, t) => {
+                    if (t.type === 'expense') {
+                      acc[t.category] = (acc[t.category] || 0) + Math.abs(t.amount);
+                    }
+                    return acc;
+                  }, {} as Record<string, number>)
+                )
+                  .sort(([, a], [, b]) => b - a)
+                  .map(([category, amount]) => (
+                    <div key={category} className="flex items-center justify-between">
+                      <span className="text-text-secondary capitalize">{category}</span>
+                      <span className="text-accent font-semibold">{formatCurrency(amount)}</span>
+                    </div>
+                  ))}
+              </div>
+            </div>
           </div>
-
-          <div className="bg-surface rounded-lg shadow-glow p-6">
-            <h2 className="text-xl font-semibold text-primary mb-4">Budget Overview</h2>
-            {[{ category: 'Food & Dining', budget: 500 }, { category: 'Transportation', budget: 300 }].map(({ category, budget }) => {
-              const spent = getCategoryTotal(category);
-              const percent = (spent / budget) * 100;
-              return (
-                <div key={category} className="mb-4">
-                  <div className="flex justify-between mb-1">
-                    <span className="text-text-secondary">{category}</span>
-                    <span className="text-text-secondary">{formatCurrency(spent)} / {formatCurrency(budget)}</span>
-                  </div>
-                  <div className="w-full bg-surface-light h-2 rounded-full">
-                    <div
-                      className={`h-2 rounded-full ${percent > 100 ? 'bg-accent' : 'bg-primary'}`}
-                      style={{ width: `${Math.min(percent, 100)}%` }}
-                    ></div>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-
-        </div>
+        )}
       </main>
     </div>
   );
