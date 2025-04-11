@@ -1,276 +1,263 @@
 'use client';
 
-import { useAuth } from '@/contexts/AuthContext';
 import { useState, useEffect } from 'react';
-import { doc, getDoc, updateDoc } from 'firebase/firestore';
+import { useRouter } from 'next/navigation';
+import { getAuth, onAuthStateChanged } from 'firebase/auth';
+import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
+import { Transaction } from '@/types/transaction';
 import { collection, query, where, getDocs } from 'firebase/firestore';
 import { format } from 'date-fns';
 import Link from 'next/link';
 
 interface UserProfile {
   displayName: string;
-  email: string;
-  currency: string;
-}
-
-interface Transaction {
-  id: string;
-  amount: number;
-  type: 'income' | 'expense';
-  date: Date;
+  currency: 'GHS' | 'USD';
 }
 
 export default function ProfilePage() {
-  const { user } = useAuth();
-  const [profile, setProfile] = useState<UserProfile | null>(null);
+  const router = useRouter();
+  const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [isEditing, setIsEditing] = useState(false);
-  const [formData, setFormData] = useState({
-    displayName: '',
-    currency: 'GHS',
-  });
-  const [error, setError] = useState('');
-  const [stats, setStats] = useState({
-    totalIncome: 0,
-    totalExpenses: 0,
-    balance: 0,
-    transactionCount: 0,
-  });
+  const [newDisplayName, setNewDisplayName] = useState('');
+  const [newCurrency, setNewCurrency] = useState<'GHS' | 'USD'>('GHS');
+  const [transactions, setTransactions] = useState<Transaction[]>([]);
 
   useEffect(() => {
-    const fetchProfile = async () => {
-      if (!user) return;
+    const auth = getAuth();
+    
+    const unsubscribe = onAuthStateChanged(auth, async (user) => {
+      if (!user) {
+        router.push('/login');
+        return;
+      }
 
       try {
-        const docRef = doc(db, 'users', user.uid);
-        const docSnap = await getDoc(docRef);
+        // First, try to get the user's profile
+        const profileRef = doc(db, 'users', user.uid);
+        const profileSnap = await getDoc(profileRef);
 
-        if (docSnap.exists()) {
-          const data = docSnap.data() as UserProfile;
-          setProfile(data);
-          setFormData({
-            displayName: data.displayName || '',
-            currency: data.currency || 'GHS',
-          });
+        if (profileSnap.exists()) {
+          // Profile exists, use the data
+          const profileData = profileSnap.data() as UserProfile;
+          setUserProfile(profileData);
+          setNewDisplayName(profileData.displayName);
+          setNewCurrency(profileData.currency);
+        } else {
+          // No profile exists, create one with default values
+          const defaultProfile: UserProfile = {
+            displayName: user.displayName || 'User',
+            currency: 'GHS'
+          };
+          
+          try {
+            await setDoc(profileRef, defaultProfile);
+            setUserProfile(defaultProfile);
+            setNewDisplayName(defaultProfile.displayName);
+            setNewCurrency(defaultProfile.currency);
+          } catch (err) {
+            console.error('Error creating profile:', err);
+            setError('Failed to create profile. Please try again.');
+            return;
+          }
         }
-      } catch (error) {
-        console.error('Error fetching profile:', error);
-        setError('Failed to fetch profile');
+
+        // Only fetch transactions if profile exists/was created
+        try {
+          const transactionsRef = collection(db, 'transactions');
+          const q = query(transactionsRef, where('userId', '==', user.uid));
+          const querySnapshot = await getDocs(q);
+          
+          const transactionsData = querySnapshot.docs.map(doc => ({
+            id: doc.id,
+            ...doc.data(),
+            date: doc.data().date.toDate(),
+          })) as Transaction[];
+          
+          setTransactions(transactionsData);
+        } catch (err) {
+          console.error('Error fetching transactions:', err);
+          setError('Failed to load transactions. Please refresh the page.');
+        }
+
+      } catch (err) {
+        console.error('Error fetching profile:', err);
+        setError('Failed to load profile. Please try again.');
       } finally {
         setLoading(false);
       }
-    };
+    });
 
-    const fetchStats = async () => {
-      if (!user) return;
+    return () => unsubscribe();
+  }, [router]);
 
-      try {
-        const transactionsRef = collection(db, 'transactions');
-        const q = query(transactionsRef, where('userId', '==', user.uid));
-        const querySnapshot = await getDocs(q);
+  const handleSave = async () => {
+    const auth = getAuth();
+    const user = auth.currentUser;
 
-        const transactions = querySnapshot.docs.map(doc => ({
-          id: doc.id,
-          ...doc.data(),
-          date: doc.data().date.toDate(),
-        })) as Transaction[];
-
-        const totalIncome = transactions
-          .filter(t => t.type === 'income')
-          .reduce((sum, t) => sum + t.amount, 0);
-
-        const totalExpenses = transactions
-          .filter(t => t.type === 'expense')
-          .reduce((sum, t) => sum + Math.abs(t.amount), 0);
-
-        setStats({
-          totalIncome,
-          totalExpenses,
-          balance: totalIncome - totalExpenses,
-          transactionCount: transactions.length,
-        });
-      } catch (error) {
-        console.error('Error fetching stats:', error);
-      }
-    };
-
-    fetchProfile();
-    fetchStats();
-  }, [user]);
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!user) return;
+    if (!user || !userProfile) {
+      setError('You must be logged in to update your profile.');
+      return;
+    }
 
     try {
-      const userRef = doc(db, 'users', user.uid);
-      await updateDoc(userRef, {
-        displayName: formData.displayName,
-        currency: formData.currency,
-      });
+      const profileRef = doc(db, 'users', user.uid);
+      const updatedProfile: UserProfile = {
+        displayName: newDisplayName,
+        currency: newCurrency
+      };
 
-      setProfile({
-        ...profile!,
-        displayName: formData.displayName,
-        currency: formData.currency,
-      });
+      await setDoc(profileRef, updatedProfile, { merge: true });
+      setUserProfile(updatedProfile);
       setIsEditing(false);
-    } catch (error) {
-      console.error('Error updating profile:', error);
-      setError('Failed to update profile');
+      setError(null);
+    } catch (err) {
+      console.error('Error updating profile:', err);
+      setError('Failed to update profile. Please try again.');
     }
   };
 
   const formatCurrency = (amount: number) => {
-    const currencySymbol = formData.currency === 'GHS' ? '₵' : '$';
-    return new Intl.NumberFormat('en-GH', {
+    const formatter = new Intl.NumberFormat('en-US', {
       style: 'currency',
-      currency: formData.currency,
-    }).format(Math.abs(amount)).replace(formData.currency, currencySymbol);
+      currency: userProfile?.currency || 'GHS',
+    });
+    return formatter.format(amount);
   };
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-background flex items-center justify-center">
-        <div className="text-primary">Loading...</div>
+      <div className="min-h-screen bg-gradient-to-br from-background to-background/80 flex items-center justify-center">
+        <p className="text-text-primary">Loading...</p>
       </div>
     );
   }
 
   if (error) {
     return (
-      <div className="min-h-screen bg-background flex items-center justify-center">
-        <div className="text-accent">{error}</div>
+      <div className="min-h-screen bg-gradient-to-br from-background to-background/80 flex items-center justify-center">
+        <p className="text-accent">{error}</p>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-background">
-      <nav className="bg-surface border-b border-primary/20">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center justify-between h-16">
-            <div className="flex items-center space-x-4">
-              <Link href="/home" className="text-text-secondary hover:text-primary transition-colors duration-300">
-                Home
-              </Link>
-              <h1 className="text-xl font-bold text-primary">Profile</h1>
-            </div>
-          </div>
+    <div className="min-h-screen bg-gradient-to-br from-background to-background/80">
+      <div className="max-w-4xl mx-auto px-4 py-8">
+        <div className="flex items-center mb-6">
+          <Link 
+            href="/home"
+            className="flex items-center text-text-secondary hover:text-text-primary transition-colors"
+          >
+            <svg 
+              xmlns="http://www.w3.org/2000/svg" 
+              className="h-5 w-5 mr-2" 
+              viewBox="0 0 20 20" 
+              fill="currentColor"
+            >
+              <path 
+                fillRule="evenodd" 
+                d="M9.707 16.707a1 1 0 01-1.414 0l-6-6a1 1 0 010-1.414l6-6a1 1 0 011.414 1.414L5.414 9H17a1 1 0 110 2H5.414l4.293 4.293a1 1 0 010 1.414z" 
+                clipRule="evenodd" 
+              />
+            </svg>
+            Back to Home
+          </Link>
         </div>
-      </nav>
-
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          {/* Profile Section */}
-          <div className="bg-surface rounded-lg shadow-glow p-6">
-            <h2 className="text-xl font-semibold text-primary mb-4">Profile Information</h2>
-            {isEditing ? (
-              <form onSubmit={handleSubmit} className="space-y-4">
-                <div>
-                  <label htmlFor="displayName" className="block text-sm font-medium text-text-secondary">
-                    Display Name
-                  </label>
-                  <input
-                    type="text"
-                    id="displayName"
-                    value={formData.displayName}
-                    onChange={(e) => setFormData({ ...formData, displayName: e.target.value })}
-                    className="mt-1 block w-full rounded-md border-primary/20 bg-surface text-text-primary shadow-sm focus:border-primary focus:ring-primary"
-                    required
-                  />
+        <div className="bg-white/5 rounded-lg shadow-glow p-6 backdrop-blur-sm">
+          <h1 className="text-2xl font-bold text-primary mb-6">Profile</h1>
+          
+          {isEditing ? (
+            <div className="space-y-4">
+              <div>
+                <label className="block text-text-secondary mb-2">Display Name</label>
+                <input
+                  type="text"
+                  value={newDisplayName}
+                  onChange={(e) => setNewDisplayName(e.target.value)}
+                  className="w-full bg-white/5 border border-primary/20 rounded-md px-4 py-2 text-text-primary"
+                />
+              </div>
+              <div>
+                <label className="block text-text-secondary mb-2">Currency</label>
+                <select
+                  value={newCurrency}
+                  onChange={(e) => setNewCurrency(e.target.value as 'GHS' | 'USD')}
+                  className="w-full bg-white/5 border border-primary/20 rounded-md px-4 py-2 text-text-primary"
+                >
+                  <option value="GHS">Ghana Cedi (₵)</option>
+                  <option value="USD">US Dollar ($)</option>
+                </select>
+              </div>
+              <div className="flex justify-end space-x-4">
+                <button
+                  onClick={() => setIsEditing(false)}
+                  className="px-4 py-2 text-text-secondary hover:text-text-primary transition"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleSave}
+                  className="px-4 py-2 bg-secondary hover:bg-secondary-dark text-white rounded-md transition shadow-glow-green"
+                >
+                  Save Changes
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div className="space-y-6">
+              <div>
+                <h2 className="text-xl font-semibold text-primary mb-2">Account Information</h2>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="bg-white/5 p-4 rounded-lg">
+                    <p className="text-text-secondary">Display Name</p>
+                    <p className="text-text-primary text-lg">{userProfile?.displayName}</p>
+                  </div>
+                  <div className="bg-white/5 p-4 rounded-lg">
+                    <p className="text-text-secondary">Currency</p>
+                    <p className="text-text-primary text-lg">
+                      {userProfile?.currency === 'GHS' ? 'Ghana Cedi (₵)' : 'US Dollar ($)'}
+                    </p>
+                  </div>
                 </div>
+              </div>
 
-                <div>
-                  <label htmlFor="currency" className="block text-sm font-medium text-text-secondary">
-                    Currency
-                  </label>
-                  <select
-                    id="currency"
-                    value={formData.currency}
-                    onChange={(e) => setFormData({ ...formData, currency: e.target.value })}
-                    className="mt-1 block w-full rounded-md border-primary/20 bg-surface text-text-primary shadow-sm focus:border-primary focus:ring-primary"
-                  >
-                    <option value="GHS">Ghana Cedi (₵)</option>
-                    <option value="USD">US Dollar ($)</option>
-                  </select>
+              <div>
+                <h2 className="text-xl font-semibold text-primary mb-4">Transaction Statistics</h2>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div className="bg-white/5 p-4 rounded-lg">
+                    <p className="text-text-secondary">Total Transactions</p>
+                    <p className="text-text-primary text-lg">{transactions.length}</p>
+                  </div>
+                  <div className="bg-secondary/10 p-4 rounded-lg">
+                    <p className="text-text-secondary">Total Income</p>
+                    <p className="text-secondary text-lg">
+                      {formatCurrency(transactions.filter(t => t.type === 'income').reduce((sum, t) => sum + t.amount, 0))}
+                    </p>
+                  </div>
+                  <div className="bg-accent/10 p-4 rounded-lg">
+                    <p className="text-text-secondary">Total Expenses</p>
+                    <p className="text-accent text-lg">
+                      {formatCurrency(transactions.filter(t => t.type === 'expense').reduce((sum, t) => sum + Math.abs(t.amount), 0))}
+                    </p>
+                  </div>
                 </div>
+              </div>
 
-                <div className="flex space-x-4">
-                  <button
-                    type="submit"
-                    className="px-4 py-2 bg-primary text-white rounded-md hover:bg-primary/90 transition-colors duration-300"
-                  >
-                    Save Changes
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setIsEditing(false)}
-                    className="px-4 py-2 bg-surface-light text-text-secondary rounded-md hover:bg-surface transition-colors duration-300"
-                  >
-                    Cancel
-                  </button>
-                </div>
-              </form>
-            ) : (
-              <div className="space-y-4">
-                <div>
-                  <p className="text-text-secondary">Display Name</p>
-                  <p className="text-text-primary">{profile?.displayName || 'Not set'}</p>
-                </div>
-
-                <div>
-                  <p className="text-text-secondary">Email</p>
-                  <p className="text-text-primary">{profile?.email}</p>
-                </div>
-
-                <div>
-                  <p className="text-text-secondary">Currency</p>
-                  <p className="text-text-primary">
-                    {formData.currency === 'GHS' ? 'Ghana Cedi (₵)' : 'US Dollar ($)'}
-                  </p>
-                </div>
-
+              <div className="flex justify-end">
                 <button
                   onClick={() => setIsEditing(true)}
-                  className="px-4 py-2 bg-primary text-white rounded-md hover:bg-primary/90 transition-colors duration-300"
+                  className="px-4 py-2 bg-secondary hover:bg-secondary-dark text-white rounded-md transition shadow-glow-green"
                 >
                   Edit Profile
                 </button>
               </div>
-            )}
-          </div>
-
-          {/* Stats Section */}
-          <div className="bg-surface rounded-lg shadow-glow p-6">
-            <h2 className="text-xl font-semibold text-primary mb-4">Transaction Statistics</h2>
-            <div className="space-y-4">
-              <div>
-                <p className="text-text-secondary">Total Transactions</p>
-                <p className="text-2xl font-bold text-primary">{stats.transactionCount}</p>
-              </div>
-
-              <div>
-                <p className="text-text-secondary">Total Income</p>
-                <p className="text-2xl font-bold text-secondary">{formatCurrency(stats.totalIncome)}</p>
-              </div>
-
-              <div>
-                <p className="text-text-secondary">Total Expenses</p>
-                <p className="text-2xl font-bold text-accent">{formatCurrency(stats.totalExpenses)}</p>
-              </div>
-
-              <div>
-                <p className="text-text-secondary">Current Balance</p>
-                <p className={`text-2xl font-bold ${stats.balance >= 0 ? 'text-secondary' : 'text-accent'}`}>
-                  {stats.balance >= 0 ? '+' : ''}{formatCurrency(stats.balance)}
-                </p>
-              </div>
             </div>
-          </div>
+          )}
         </div>
-      </main>
+      </div>
     </div>
   );
 } 

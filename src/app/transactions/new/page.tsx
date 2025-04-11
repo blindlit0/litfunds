@@ -2,62 +2,48 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { addDoc, collection, serverTimestamp } from 'firebase/firestore';
+import { getAuth } from 'firebase/auth';
+import { collection, addDoc } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
-import { useAuth } from '@/contexts/AuthContext';
 
 export default function NewTransactionPage() {
   const router = useRouter();
-  const { user } = useAuth();
-  const [formData, setFormData] = useState({
-    amount: '',
-    description: '',
-    category: 'food',
-    type: 'expense',
-    date: new Date().toISOString().split('T')[0],
-  });
+  const [type, setType] = useState<'income' | 'expense'>('expense');
+  const [amount, setAmount] = useState('');
+  const [description, setDescription] = useState('');
+  const [category, setCategory] = useState('');
+  const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
   const [error, setError] = useState('');
-  const [isSubmitting, setIsSubmitting] = useState(false);
-
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
-    const { name, value } = e.target;
-    setFormData(prev => ({ ...prev, [name]: value }));
-  };
+  const [loading, setLoading] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
-    setIsSubmitting(true);
+    setLoading(true);
 
     try {
+      const auth = getAuth();
+      const user = auth.currentUser;
       if (!user) {
-        throw new Error('You must be logged in to add a transaction');
+        router.push('/login');
+        return;
       }
 
-      const amount = parseFloat(formData.amount);
-      if (isNaN(amount) || amount <= 0) {
-        throw new Error('Please enter a valid amount');
-      }
-
-      const transactionData = {
-        amount: formData.type === 'expense' ? -amount : amount,
-        description: formData.description.trim(),
-        category: formData.category,
-        type: formData.type,
-        date: new Date(formData.date),
+      await addDoc(collection(db, 'transactions'), {
         userId: user.uid,
-        createdAt: serverTimestamp(),
-      };
+        type,
+        amount: parseFloat(amount),
+        description,
+        category: category.toLowerCase(),
+        date: new Date(date)
+      });
 
-      const transactionsRef = collection(db, 'transactions');
-      await addDoc(transactionsRef, transactionData);
-      
-      // Only redirect after successful save
       router.push('/home');
     } catch (err) {
-      console.error('Error saving transaction:', err);
-      setError(err instanceof Error ? err.message : 'An error occurred while saving the transaction');
-      setIsSubmitting(false);
+      console.error('Error creating transaction:', err);
+      setError('Failed to create transaction. Please try again.');
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -92,10 +78,10 @@ export default function NewTransactionPage() {
                 <select
                   id="type"
                   name="type"
-                  value={formData.type}
-                  onChange={handleChange}
+                  value={type}
+                  onChange={(e) => setType(e.target.value as 'income' | 'expense')}
                   className="mt-1 block w-full px-3 py-2 bg-surface-light border border-primary/30 rounded-md text-text focus:outline-none focus:ring-2 focus:ring-primary transition-all duration-300"
-                  disabled={isSubmitting}
+                  disabled={loading}
                 >
                   <option value="income">Income</option>
                   <option value="expense">Expense</option>
@@ -114,13 +100,13 @@ export default function NewTransactionPage() {
                     type="number"
                     name="amount"
                     id="amount"
-                    value={formData.amount}
-                    onChange={handleChange}
+                    value={amount}
+                    onChange={(e) => setAmount(e.target.value)}
                     step="0.01"
                     min="0"
                     className="block w-full pl-7 pr-12 rounded-md bg-surface-light border border-primary/30 text-text focus:outline-none focus:ring-2 focus:ring-primary transition-all duration-300"
                     placeholder="0.00"
-                    disabled={isSubmitting}
+                    disabled={loading}
                   />
                 </div>
               </div>
@@ -133,11 +119,11 @@ export default function NewTransactionPage() {
                   type="text"
                   name="description"
                   id="description"
-                  value={formData.description}
-                  onChange={handleChange}
+                  value={description}
+                  onChange={(e) => setDescription(e.target.value)}
                   className="mt-1 block w-full px-3 py-2 bg-surface-light border border-primary/30 rounded-md text-text focus:outline-none focus:ring-2 focus:ring-primary transition-all duration-300"
                   placeholder="What was this for?"
-                  disabled={isSubmitting}
+                  disabled={loading}
                 />
               </div>
 
@@ -148,10 +134,10 @@ export default function NewTransactionPage() {
                 <select
                   id="category"
                   name="category"
-                  value={formData.category}
-                  onChange={handleChange}
+                  value={category}
+                  onChange={(e) => setCategory(e.target.value)}
                   className="mt-1 block w-full px-3 py-2 bg-surface-light border border-primary/30 rounded-md text-text focus:outline-none focus:ring-2 focus:ring-primary transition-all duration-300"
-                  disabled={isSubmitting}
+                  disabled={loading}
                 >
                   <option value="food">Food & Dining</option>
                   <option value="transportation">Transportation</option>
@@ -170,10 +156,10 @@ export default function NewTransactionPage() {
                   type="date"
                   name="date"
                   id="date"
-                  value={formData.date}
-                  onChange={handleChange}
+                  value={date}
+                  onChange={(e) => setDate(e.target.value)}
                   className="mt-1 block w-full px-3 py-2 bg-surface-light border border-primary/30 rounded-md text-text focus:outline-none focus:ring-2 focus:ring-primary transition-all duration-300"
-                  disabled={isSubmitting}
+                  disabled={loading}
                 />
               </div>
 
@@ -182,16 +168,16 @@ export default function NewTransactionPage() {
                   type="button"
                   onClick={() => router.push('/home')}
                   className="flex-1 bg-accent hover:bg-accent/90 text-background font-semibold py-2 px-4 rounded-md transition-all duration-300 shadow-glow"
-                  disabled={isSubmitting}
+                  disabled={loading}
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  disabled={isSubmitting}
+                  disabled={loading}
                   className="flex-1 bg-secondary hover:bg-secondary-dark text-background font-semibold py-2 px-4 rounded-md transition-all duration-300 shadow-glow-green disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  {isSubmitting ? 'Saving...' : 'Save Transaction'}
+                  {loading ? 'Saving...' : 'Save Transaction'}
                 </button>
               </div>
             </form>

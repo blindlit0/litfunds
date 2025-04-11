@@ -1,119 +1,110 @@
 'use client';
 
 import { useState } from 'react';
-import { createUserWithEmailAndPassword } from 'firebase/auth';
-import { auth } from '@/lib/firebase';
-import Link from 'next/link';
 import { useRouter } from 'next/navigation';
+import { createUserWithEmailAndPassword, updateProfile } from 'firebase/auth';
+import { auth, db } from '@/lib/firebase';
+import { doc, setDoc } from 'firebase/firestore';
+import Link from 'next/link';
 
-export default function SignUp() {
+export default function SignupPage() {
   const router = useRouter();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [confirmPassword, setConfirmPassword] = useState('');
-  const [error, setError] = useState<string | null>(null);
+  const [displayName, setDisplayName] = useState('');
+  const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
-  const handleSignUp = async (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setError(null);
+    setError('');
     setLoading(true);
 
-    if (password !== confirmPassword) {
-      setError('Passwords do not match');
-      setLoading(false);
-      return;
-    }
-
     try {
-      await createUserWithEmailAndPassword(auth, email, password);
+      // Create user with email and password
+      const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+      const user = userCredential.user;
+
+      // Update display name
+      await updateProfile(user, {
+        displayName: displayName
+      });
+
+      // Create user profile document in Firestore
+      await setDoc(doc(db, 'users', user.uid), {
+        displayName: displayName,
+        currency: 'GHS'
+      });
+
       router.push('/home');
-    } catch (error: any) {
-      setError(error.message);
+    } catch (err) {
+      console.error('Error signing up:', err);
+      setError('Failed to create account. Please try again.');
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div className="min-h-screen bg-background flex items-center justify-center px-4">
-      <div className="max-w-md w-full space-y-8 bg-surface p-8 rounded-xl shadow-glow">
-        <div className="text-center">
-          <h2 className="text-3xl font-bold text-primary">Create Account</h2>
-          <p className="mt-2 text-text-secondary">Join us to start tracking your expenses</p>
-        </div>
-
+    <div className="min-h-screen bg-gradient-to-br from-background to-background/80 flex items-center justify-center">
+      <div className="bg-white/5 rounded-lg shadow-glow p-8 w-full max-w-md backdrop-blur-sm">
+        <h1 className="text-2xl font-bold text-primary mb-6 text-center">Create Account</h1>
+        
         {error && (
-          <div className="bg-accent/10 border border-accent text-accent px-4 py-3 rounded-md">
+          <div className="bg-accent/10 border border-accent text-accent px-4 py-3 rounded mb-4">
             {error}
           </div>
         )}
 
-        <form className="mt-8 space-y-6" onSubmit={handleSignUp}>
-          <div className="space-y-4">
-            <div>
-              <label htmlFor="email" className="block text-sm font-medium text-text-secondary">
-                Email address
-              </label>
-              <input
-                id="email"
-                type="email"
-                required
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                className="mt-1 block w-full px-3 py-2 bg-surface-light border border-primary/30 rounded-md text-text focus:outline-none focus:ring-2 focus:ring-primary transition-all duration-300"
-                placeholder="Enter your email"
-              />
-            </div>
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div>
+            <label className="block text-text-secondary mb-2">Display Name</label>
+            <input
+              type="text"
+              value={displayName}
+              onChange={(e) => setDisplayName(e.target.value)}
+              className="w-full bg-white/5 border border-primary/20 rounded-md px-4 py-2 text-text-primary"
+              required
+            />
+          </div>
 
-            <div>
-              <label htmlFor="password" className="block text-sm font-medium text-text-secondary">
-                Password
-              </label>
-              <input
-                id="password"
-                type="password"
-                required
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                className="mt-1 block w-full px-3 py-2 bg-surface-light border border-primary/30 rounded-md text-text focus:outline-none focus:ring-2 focus:ring-primary transition-all duration-300"
-                placeholder="Create a password"
-              />
-            </div>
+          <div>
+            <label className="block text-text-secondary mb-2">Email</label>
+            <input
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              className="w-full bg-white/5 border border-primary/20 rounded-md px-4 py-2 text-text-primary"
+              required
+            />
+          </div>
 
-            <div>
-              <label htmlFor="confirmPassword" className="block text-sm font-medium text-text-secondary">
-                Confirm Password
-              </label>
-              <input
-                id="confirmPassword"
-                type="password"
-                required
-                value={confirmPassword}
-                onChange={(e) => setConfirmPassword(e.target.value)}
-                className="mt-1 block w-full px-3 py-2 bg-surface-light border border-primary/30 rounded-md text-text focus:outline-none focus:ring-2 focus:ring-primary transition-all duration-300"
-                placeholder="Confirm your password"
-              />
-            </div>
+          <div>
+            <label className="block text-text-secondary mb-2">Password</label>
+            <input
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              className="w-full bg-white/5 border border-primary/20 rounded-md px-4 py-2 text-text-primary"
+              required
+            />
           </div>
 
           <button
             type="submit"
             disabled={loading}
-            className="w-full bg-secondary hover:bg-secondary-dark text-background font-semibold py-2 px-4 rounded-md transition-all duration-300 shadow-glow-green disabled:opacity-50 disabled:cursor-not-allowed"
+            className="w-full bg-secondary hover:bg-secondary-dark text-white py-2 rounded-md transition shadow-glow-green disabled:opacity-50"
           >
-            {loading ? 'Creating account...' : 'Sign Up'}
+            {loading ? 'Creating Account...' : 'Sign Up'}
           </button>
         </form>
 
-        <div className="text-center">
-          <p className="text-sm text-text-secondary">
-            Already have an account?{' '}
-            <Link href="/" className="text-primary hover:text-primary-dark transition-colors duration-300">
-              Sign in
-            </Link>
-          </p>
-        </div>
+        <p className="mt-4 text-center text-text-secondary">
+          Already have an account?{' '}
+          <Link href="/login" className="text-secondary hover:text-secondary-dark">
+            Log in
+          </Link>
+        </p>
       </div>
     </div>
   );
