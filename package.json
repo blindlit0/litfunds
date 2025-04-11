@@ -9,6 +9,8 @@
     "lint": "next lint"
   },
   "dependencies": {
+    "chart.js": "^4.4.1",
+    "date-fns": "^2.30.0",
     "firebase": "^9.23.0",
     "next": "13.4.19",
     "react": "^18.2.0",
@@ -27,6 +29,4 @@
     "typescript": "^5.2.2"
   },
   "engines": {
-    "node": ">=16.0.0"
-  }
-}
+  
