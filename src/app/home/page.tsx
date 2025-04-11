@@ -23,7 +23,7 @@ export default function HomePage() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-16">
             <div className="flex items-center">
-              <h1 className="text-xl font-bold text-primary">Expense Tracker</h1>
+              <h1 className="text-xl font-bold text-primary">LitFunds</h1>
             </div>
             <div className="flex items-center space-x-4">
               <span className="text-text-secondary">{user?.email}</span>
@@ -47,15 +47,15 @@ export default function HomePage() {
             <div className="space-y-4">
               <div className="flex justify-between items-center">
                 <span className="text-text-secondary">Total Income</span>
-                <span className="text-secondary font-semibold">$0.00</span>
+                <span className="text-secondary font-semibold">₵0.00</span>
               </div>
               <div className="flex justify-between items-center">
                 <span className="text-text-secondary">Total Expenses</span>
-                <span className="text-accent font-semibold">$0.00</span>
+                <span className="text-accent font-semibold">₵0.00</span>
               </div>
               <div className="flex justify-between items-center border-t border-primary/20 pt-4">
                 <span className="text-text-secondary">Balance</span>
-                <span className="text-primary font-semibold">$0.00</span>
+                <span className="text-primary font-semibold">₵0.00</span>
               </div>
             </div>
           </div>
@@ -82,15 +82,15 @@ export default function HomePage() {
             <div className="space-y-2">
               <div className="flex justify-between items-center">
                 <span className="text-text-secondary">Food & Dining</span>
-                <span className="text-accent">$0.00</span>
+                <span className="text-accent">₵0.00</span>
               </div>
               <div className="flex justify-between items-center">
                 <span className="text-text-secondary">Transportation</span>
-                <span className="text-accent">$0.00</span>
+                <span className="text-accent">₵0.00</span>
               </div>
               <div className="flex justify-between items-center">
                 <span className="text-text-secondary">Entertainment</span>
-                <span className="text-accent">$0.00</span>
+                <span className="text-accent">₵0.00</span>
               </div>
             </div>
           </div>
@@ -102,7 +102,7 @@ export default function HomePage() {
               <div>
                 <div className="flex justify-between mb-1">
                   <span className="text-text-secondary">Food & Dining</span>
-                  <span className="text-text-secondary">$0 / $500</span>
+                  <span className="text-text-secondary">₵0 / ₵500</span>
                 </div>
                 <div className="w-full bg-surface-light rounded-full h-2">
                   <div className="bg-primary h-2 rounded-full transition-all duration-300" style={{ width: '0%' }}></div>
@@ -111,7 +111,7 @@ export default function HomePage() {
               <div>
                 <div className="flex justify-between mb-1">
                   <span className="text-text-secondary">Transportation</span>
-                  <span className="text-text-secondary">$0 / $300</span>
+                  <span className="text-text-secondary">₵0 / ₵300</span>
                 </div>
                 <div className="w-full bg-surface-light rounded-full h-2">
                   <div className="bg-secondary h-2 rounded-full transition-all duration-300" style={{ width: '0%' }}></div>
