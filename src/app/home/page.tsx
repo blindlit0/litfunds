@@ -95,7 +95,16 @@ export default function HomePage() {
             <h1 className="text-xl font-bold text-primary">LitFunds</h1>
             <div className="flex items-center space-x-4">
               <span className="text-text-secondary">Welcome, {user?.displayName || 'User'}</span>
-              <Link href="/profile" className="text-text-secondary hover:text-primary transition">
+              <Link
+                href="/analytics"
+                className="text-text-secondary hover:text-primary transition-colors duration-300"
+              >
+                Analytics
+              </Link>
+              <Link
+                href="/profile"
+                className="text-text-secondary hover:text-primary transition-colors duration-300"
+              >
                 Profile
               </Link>
               <button

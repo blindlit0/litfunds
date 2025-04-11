@@ -5,8 +5,20 @@ import { useState, useEffect } from 'react';
 import { collection, query, where, getDocs } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameDay } from 'date-fns';
-import TransactionChart from '@/components/TransactionChart';
 import Link from 'next/link';
+import {
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  Legend,
+  ResponsiveContainer,
+  PieChart,
+  Pie,
+  Cell,
+} from 'recharts';
 
 interface Transaction {
   id: string;
@@ -16,6 +28,8 @@ interface Transaction {
   type: 'income' | 'expense';
   date: Date;
 }
+
+const COLORS = ['#6366f1', '#ec4899', '#10b981', '#f59e0b', '#ef4444', '#3b82f6'];
 
 export default function AnalyticsPage() {
   const { user } = useAuth();
@@ -49,7 +63,6 @@ export default function AnalyticsPage() {
           };
         }) as Transaction[];
 
-        // Sort transactions by date
         fetchedTransactions.sort((a, b) => b.date.getTime() - a.date.getTime());
         setTransactions(fetchedTransactions);
       } catch (error) {
@@ -85,8 +98,8 @@ export default function AnalyticsPage() {
     }, {} as Record<string, number>);
 
     return Object.entries(totals).map(([category, amount]) => ({
-      category,
-      amount,
+      name: category,
+      value: amount,
     }));
   };
 
@@ -104,7 +117,7 @@ export default function AnalyticsPage() {
       }, 0);
       
       return {
-        date: day,
+        date: format(day, 'MMM d'),
         amount: total,
       };
     });
@@ -115,17 +128,33 @@ export default function AnalyticsPage() {
     if (categoryTotals.length === 0) return null;
     
     return categoryTotals.reduce((max, current) => 
-      current.amount > max.amount ? current : max
+      current.value > max.value ? current : max
     );
+  };
+
+  const getBalance = () => {
+    const filtered = getFilteredTransactions();
+    const income = filtered
+      .filter(t => t.type === 'income')
+      .reduce((sum, t) => sum + t.amount, 0);
+    const expenses = filtered
+      .filter(t => t.type === 'expense')
+      .reduce((sum, t) => sum + Math.abs(t.amount), 0);
+    return income - expenses;
   };
 
   const totalSpending = getFilteredTransactions()
     .filter(t => t.type === 'expense')
     .reduce((sum, t) => sum + Math.abs(t.amount), 0);
 
+  const totalIncome = getFilteredTransactions()
+    .filter(t => t.type === 'income')
+    .reduce((sum, t) => sum + t.amount, 0);
+
   const biggestCategory = getBiggestCategory();
   const dailySpending = getDailySpending();
   const categoryData = getCategoryTotals();
+  const balance = getBalance();
 
   return (
     <div className="min-h-screen bg-background">
@@ -173,33 +202,55 @@ export default function AnalyticsPage() {
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          {/* Total Spending Card */}
+          {/* Balance Card */}
           <div className="bg-surface rounded-lg shadow-glow p-6">
-            <h2 className="text-xl font-semibold text-primary mb-4">Total Spending</h2>
-            <div className="text-3xl font-bold text-accent">{formatCurrency(totalSpending)}</div>
+            <h2 className="text-xl font-semibold text-primary mb-4">Balance</h2>
+            <div className={`text-3xl font-bold ${balance >= 0 ? 'text-secondary' : 'text-accent'}`}>
+              {balance >= 0 ? '+' : ''}{formatCurrency(balance)}
+            </div>
             <p className="text-text-secondary mt-2">
               {format(dateRange.start, 'MMM d')} - {format(dateRange.end, 'MMM d, yyyy')}
             </p>
           </div>
 
-          {/* Biggest Category Card */}
+          {/* Income vs Expenses Card */}
           <div className="bg-surface rounded-lg shadow-glow p-6">
-            <h2 className="text-xl font-semibold text-primary mb-4">Biggest Category</h2>
-            {biggestCategory ? (
-              <>
-                <div className="text-3xl font-bold text-accent">{formatCurrency(biggestCategory.amount)}</div>
-                <p className="text-text-secondary mt-2 capitalize">{biggestCategory.category}</p>
-              </>
-            ) : (
-              <p className="text-text-secondary">No spending data available</p>
-            )}
+            <h2 className="text-xl font-semibold text-primary mb-4">Income vs Expenses</h2>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <p className="text-text-secondary">Income</p>
+                <p className="text-2xl font-bold text-secondary">{formatCurrency(totalIncome)}</p>
+              </div>
+              <div>
+                <p className="text-text-secondary">Expenses</p>
+                <p className="text-2xl font-bold text-accent">{formatCurrency(totalSpending)}</p>
+              </div>
+            </div>
           </div>
 
           {/* Category Breakdown */}
           <div className="bg-surface rounded-lg shadow-glow p-6 md:col-span-2">
             <h2 className="text-xl font-semibold text-primary mb-4">Category Breakdown</h2>
             <div className="h-64">
-              <TransactionChart data={categoryData} />
+              <ResponsiveContainer width="100%" height="100%">
+                <PieChart>
+                  <Pie
+                    data={categoryData}
+                    cx="50%"
+                    cy="50%"
+                    labelLine={false}
+                    outerRadius={80}
+                    fill="#8884d8"
+                    dataKey="value"
+                    label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
+                  >
+                    {categoryData.map((entry, index) => (
+                      <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                    ))}
+                  </Pie>
+                  <Tooltip formatter={(value) => formatCurrency(value as number)} />
+                </PieChart>
+              </ResponsiveContainer>
             </div>
           </div>
 
@@ -207,18 +258,15 @@ export default function AnalyticsPage() {
           <div className="bg-surface rounded-lg shadow-glow p-6 md:col-span-2">
             <h2 className="text-xl font-semibold text-primary mb-4">Daily Spending Trend</h2>
             <div className="h-64">
-              <div className="flex h-full items-end space-x-2">
-                {dailySpending.map((day, index) => (
-                  <div
-                    key={index}
-                    className="flex-1 bg-primary/20 hover:bg-primary/30 transition-colors duration-300 rounded-t"
-                    style={{
-                      height: `${(day.amount / Math.max(...dailySpending.map(d => d.amount))) * 100}%`,
-                    }}
-                    title={`${format(day.date, 'MMM d')}: ${formatCurrency(day.amount)}`}
-                  />
-                ))}
-              </div>
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={dailySpending}>
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis dataKey="date" />
+                  <YAxis />
+                  <Tooltip formatter={(value) => formatCurrency(value as number)} />
+                  <Bar dataKey="amount" fill="#6366f1" />
+                </BarChart>
+              </ResponsiveContainer>
             </div>
           </div>
         </div>
